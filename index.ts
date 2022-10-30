@@ -17,7 +17,7 @@ const io = new Server(httpServer, {
 });
 
 let games: Record<string, Game> = {};
-let showRunnerSocket: Socket | null = null;
+let hostSocket: Socket | null = null;
 let playerSockets: Record<string, Socket> = {};
 
 const PLAYERS_COUNT = 3;
@@ -25,14 +25,14 @@ const PLAYERS_COUNT = 3;
 const onConnection = (socket: Socket) => {
   console.log("connected", socket.id);
 
-  // SHOW-RUNNER handlers
+  // HOST handlers
   socket.on("sendCrateGame", () => {
     const gameId = "gra";
     socket.emit("returnNewGame", {
       gameId,
       playersCount: PLAYERS_COUNT,
     });
-    showRunnerSocket = socket;
+    hostSocket = socket;
     games[gameId] = { isOpen: true, isStarted: false, players: [] };
     playerSockets = {};
   });
@@ -108,7 +108,7 @@ const onConnection = (socket: Socket) => {
     "sendJoinGame",
     ({ gameId, playerName }: { gameId: string; playerName: string }) => {
       console.log("games", games);
-      if (!showRunnerSocket) return;
+      if (!hostSocket) return;
 
       if (games[gameId] && games[gameId].isOpen) {
         games = {
@@ -128,15 +128,11 @@ const onConnection = (socket: Socket) => {
           },
         };
         playerSockets[socket.id] = socket;
-        showRunnerSocket.emit("returnNewPlayers", games[gameId].players);
+        hostSocket.emit("returnNewPlayers", games[gameId].players);
         socket.emit("returnJoinGame", true);
 
         if (Object.keys(games[gameId].players).length === PLAYERS_COUNT) {
-          showRunnerSocket.emit("returnStartGame");
-          // BUG 1 - Doesn't send it to last player if he is on mobile device
-          // 1. playerSockets is missing last dude
-          // 2. it gets emitted but participant doesnt get it
-          // 3. participant got it but has bug on it's own (unlikely, because it works on other devices)
+          hostSocket.emit("returnStartGame");
           Object.values(playerSockets).forEach((playerSocket) =>
             playerSocket.emit("returnStartGame")
           );
@@ -147,7 +143,7 @@ const onConnection = (socket: Socket) => {
     }
   );
   socket.on("sendAnswerQuestion", () => {
-    if (!showRunnerSocket) return;
+    if (!hostSocket) return;
     const otherPlayersSockets = Object.values(playerSockets).filter(
       (playerSocket) => playerSocket.id !== socket.id
     );
@@ -156,7 +152,7 @@ const onConnection = (socket: Socket) => {
     );
 
     console.log("returnAnswerQuestion");
-    showRunnerSocket.emit("returnAnswerQuestion", socket.id);
+    hostSocket.emit("returnAnswerQuestion", socket.id);
   });
 };
 
