@@ -27,7 +27,7 @@ const onConnection = (socket: Socket) => {
 
   // HOST handlers
   socket.on("sendCrateGame", () => {
-    const gameId = "Gra";
+    const gameId = "Test";
     socket.emit("returnNewGame", {
       gameId,
       playersCount: PLAYERS_COUNT,
