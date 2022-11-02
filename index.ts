@@ -7,7 +7,7 @@ import { Game } from "./types";
 
 dotenv.config();
 const app = express();
-const port = process.env.PORT;
+const port = 3003;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
