@@ -7,7 +7,20 @@ export type Player = {
 };
 
 export type Game = {
-  isOpen: boolean;
+  gameId: string;
   isStarted: boolean;
   players: Player[];
+};
+
+export type Tournament = {
+  players: Player[];
+  games: Record<string, Game>;
+
+  finalPlayers: Player[];
+  finalGame?: Game;
+
+  gamesCount: number;
+  singleGamePlayersCount: number;
+  isOpen: boolean;
+  isStarted: boolean;
 };

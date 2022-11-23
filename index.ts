@@ -3,11 +3,13 @@ import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import dotenv from "dotenv";
 
-import { Game } from "./types";
+import { Game, Player, Tournament } from "./types";
+import { shuffleArray } from "./shuffleArray";
+import { ISendPlayerAnsweredWronglyPayload } from "./messagesTypes";
 
 dotenv.config();
 const app = express();
-const port = 3003;
+const port = 3123;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -16,32 +18,191 @@ const io = new Server(httpServer, {
   },
 });
 
-let games: Record<string, Game> = {};
-let hostSocket: Socket | null = null;
-let playerSockets: Record<string, Socket> = {};
+const sendMsg = (socket: Socket, msg: string, payload?: unknown) => {
+  const isHost = socket.id === hostSocket?.id;
+  console.log(
+    `[${isHost ? "Host" : "Participant " + socket.id}] ", ${msg} with payload ${
+      typeof payload === "object"
+        ? Object.entries(payload as any).toString()
+        : payload
+    }`
+  );
+  socket.emit(msg, payload);
+};
 
-const PLAYERS_COUNT = 3;
+// Host
+//tournament
+const SEND_CREATE_TOURNAMENT = "sendCreateTournament";
+const RETURN_NEW_TOURNAMENT = "returnNewTournament";
+const RETURN_NEW_GAMES = "returnNewGames";
+const RETURN_CURRENT_GAME_ID = "returnCurrentGameId";
+const RETURN_NEW_PLAYERS = "returnNewPlayers";
+const SEND_START_TOURNAMENT = "sendStartTournament";
+
+//games
+const SEND_START_GAME = "sendStartGame";
+const SEND_PROCEED_TO_THE_NEXT_GAME = "sendProceedToTheNextGame";
+
+//questions
+const SEND_START_QUESTION = "sendStartQuestion";
+const RETURN_ANSWER_QUESTION = "returnAnswerQuestion";
+const SEND_PLAYER_ANSWERED_WRONGLY = "sendPlayerAnsweredWrongly";
+const SEND_NO_ANSWER = "sendNoAnswer";
+const SEND_NEW_PLAYER_SCORE = "sendNewPlayerScore";
+
+// ---------------------------MMMM--------------------------------------
+// -------------------------O-X--X-O--------------------------------------
+// ---------------------------oooo----------------------------------------
+// -------------------------/- ||--\-----------------------------------
+// ------------------------""--||--""-----------------------------------
+
+// PARTICIPANT
+//tournament
+const SEND_JOIN_TOURNAMENT = "sendJoinTournament";
+const RETURN_JOIN_TOURNAMENT = "returnJoinTournament";
+
+//games
+const RETURN_START_GAME = "returnStartGame";
+const RETURN_LOST_GAME = "returnLostGame";
+const RETURN_WON_GAME = "returnWonGame";
+
+//questions
+const SEND_ANSWER_QUESTION = "sendAnswerQuestion";
+const RETURN_ANSWER_QUESTION_BLOCKED = "returnAnswerQuestionBlocked";
+const RETURN_NEW_PLAYER_SCORE = "returnNewPlayerScore";
+const RETURN_PLAYER_CAN_ANSWER = "returnPlayerCanAnswer";
+const RETURN_PLAYER_ANSWERED_WRONGLY = "returnPlayerAnsweredWrongly";
+const RETURN_START_QUESTION = "returnStartQuestion";
+
+// COMMON
+const RETURN_START_TOURNAMENT = "returnStartTournament";
+
+const PLAYERS_COUNT = 4;
+const SINGLE_GAME_PLAYERS_COUNT = 2;
+
+let tournaments: Record<string, Tournament> = {};
+let currentGameId: string | null = null;
+let currentGameIndex: number | null = null;
+let hostSocket: Socket | null = null;
+let playersSockets: Record<string, Socket> = {};
+
+// Utils
+const createGames = (players: Player[]): Record<string, Game> => {
+  const gamesIds = new Array(PLAYERS_COUNT / SINGLE_GAME_PLAYERS_COUNT)
+    .fill(0)
+    .map((_, index) => `game${index + 1}`);
+
+  const shuffledPlayers = shuffleArray(players);
+
+  return Object.fromEntries(
+    gamesIds.map((gameId, index) => [
+      gameId,
+      {
+        gameId,
+        isStarted: false,
+        players: shuffledPlayers.slice(
+          index * SINGLE_GAME_PLAYERS_COUNT,
+          (index + 1) * SINGLE_GAME_PLAYERS_COUNT
+        ),
+      },
+    ])
+  );
+};
+const sendMessageToAllPlayers = (
+  tournamentId: string,
+  message: string,
+  payload?: unknown
+) => {
+  Object.values(tournaments[tournamentId].players).forEach((player) =>
+    playersSockets[player.id].emit(message, payload)
+  );
+};
+const sendMessageToAllPlayersFromGame = (
+  game: Game,
+  message: string,
+  payload?: unknown
+) => {
+  Object.values(game.players).forEach((player) =>
+    playersSockets[player.id].emit(message, payload)
+  );
+};
+const sendMessageToOtherPlayersFromGame = (
+  playerToBeSkippedId: string,
+  game: Game,
+  message: string
+) => {
+  Object.values(game.players)
+    .filter((player) => player.id !== playerToBeSkippedId)
+    .forEach((player) => playersSockets[player.id].emit(message));
+};
 
 const onConnection = (socket: Socket) => {
   console.log("connected", socket.id);
 
   // HOST handlers
-  socket.on("sendCrateGame", () => {
-    const gameId = "Test";
-    socket.emit("returnNewGame", {
-      gameId,
+  socket.on(SEND_CREATE_TOURNAMENT, () => {
+    const tournamentId = "Test";
+    socket.emit(RETURN_NEW_TOURNAMENT, {
+      tournamentId,
       playersCount: PLAYERS_COUNT,
     });
     hostSocket = socket;
-    games[gameId] = { isOpen: true, isStarted: false, players: [] };
-    playerSockets = {};
-  });
-  socket.on("sendStartGame", (gameId: string) => {
-    console.log("Starting game ", gameId);
-    games[gameId] = { ...games[gameId], isStarted: true, isOpen: false };
+    tournaments[tournamentId] = {
+      players: [],
+      games: {},
+      finalPlayers: [],
+
+      gamesCount: Math.floor(PLAYERS_COUNT / SINGLE_GAME_PLAYERS_COUNT),
+      singleGamePlayersCount: SINGLE_GAME_PLAYERS_COUNT,
+      isOpen: true,
+      isStarted: false,
+    };
+    playersSockets = {};
   });
   socket.on(
-    "sendNewPlayerScore",
+    SEND_START_TOURNAMENT,
+    ({ tournamentId }: { tournamentId: string }) => {
+      console.log("Starting tournament ", tournamentId);
+      const currentTournament = tournaments[tournamentId];
+      if (!currentTournament) {
+        console.error(SEND_START_TOURNAMENT, "NO TOURNAMENT", tournamentId);
+      }
+      currentTournament.isStarted = true;
+      currentTournament.isOpen = false;
+      currentTournament.games = createGames(currentTournament.players);
+      currentGameIndex = 0;
+      currentGameId = Object.keys(currentTournament.games)[currentGameIndex];
+      if (!currentGameId) {
+        console.error(SEND_START_TOURNAMENT, "NO GAME");
+      }
+
+      sendMsg(socket, RETURN_NEW_GAMES, currentTournament.games);
+      sendMsg(socket, RETURN_CURRENT_GAME_ID, {
+        currentGameId,
+        currentGameIndex,
+      });
+      sendMsg(socket, RETURN_START_TOURNAMENT);
+      sendMessageToAllPlayers(tournamentId, RETURN_START_TOURNAMENT);
+    }
+  );
+  socket.on(
+    SEND_START_GAME,
+    ({ tournamentId, gameId }: { tournamentId: string; gameId: string }) => {
+      console.log("Starting game ", gameId);
+      const currentGame = tournaments[tournamentId].games[gameId];
+      currentGame.isStarted = true;
+      sendMsg(socket, RETURN_START_GAME);
+      if (currentGame) {
+        sendMessageToAllPlayersFromGame(currentGame, RETURN_START_GAME, {
+          gameId,
+        });
+      } else {
+        console.error("NO SUCH GAME", tournamentId, gameId);
+      }
+    }
+  );
+  socket.on(
+    SEND_NEW_PLAYER_SCORE,
     ({
       answeringPlayerId,
       newScore,
@@ -50,110 +211,131 @@ const onConnection = (socket: Socket) => {
       newScore: number;
     }) => {
       console.log("New score ", answeringPlayerId, " ", newScore);
-      playerSockets[answeringPlayerId].emit("returnNewPlayerScore", newScore);
+      playersSockets[answeringPlayerId].emit(RETURN_NEW_PLAYER_SCORE, {
+        newScore,
+      });
     }
   );
-  socket.on("sendStartQuestion", (gameId: string) => {
-    console.log("STARTING QUESTION");
-
-    games = {
-      ...games,
-      [gameId]: {
-        ...games[gameId],
-        players: games[gameId].players.map((player) => ({
-          ...player,
-          wasAlreadyAnswering: false,
-          isAnswering: false,
-        })),
-      },
-    };
-
-    Object.values(playerSockets).forEach((playerSocket) =>
-      playerSocket.emit("returnStartQuestion")
-    );
-  });
   socket.on(
-    "sendPlayerAnsweredWrongly",
-    ({ playerId, gameId }: { playerId: string; gameId: string }) => {
+    SEND_START_QUESTION,
+    ({ tournamentId, gameId }: { tournamentId: string; gameId: string }) => {
+      const currentGame = tournaments[tournamentId].games[gameId];
+      currentGame.players = currentGame.players.map((player) => ({
+        ...player,
+        wasAlreadyAnswering: false,
+        isAnswering: false,
+      }));
+
+      sendMessageToAllPlayersFromGame(currentGame, RETURN_START_QUESTION);
+    }
+  );
+  socket.on(
+    SEND_PLAYER_ANSWERED_WRONGLY,
+    ({ playerId, gameId, tournamentId }: ISendPlayerAnsweredWronglyPayload) => {
       console.log("PLAYER ANSWERED WRONGLY");
-      playerSockets[playerId].emit("returnPlayerAnsweredWrongly");
+      const currentGame = tournaments[tournamentId].games[gameId];
 
-      games = {
-        ...games,
-        [gameId]: {
-          ...games[gameId],
-          players: games[gameId].players.map((player) =>
-            player.id === playerId
-              ? { ...player, wasAlreadyAnswering: true }
-              : player
-          ),
-        },
-      };
-
-      games[gameId].players
+      playersSockets[playerId].emit(RETURN_PLAYER_ANSWERED_WRONGLY);
+      currentGame.players = currentGame.players.map((player) =>
+        player.id === playerId
+          ? { ...player, wasAlreadyAnswering: true }
+          : player
+      );
+      currentGame.players
         .filter((player) => !player.wasAlreadyAnswering)
         .forEach((unansweredPlayer) =>
-          playerSockets[unansweredPlayer.id].emit("returnPlayerCanAnswer")
+          playersSockets[unansweredPlayer.id].emit(RETURN_PLAYER_CAN_ANSWER)
         );
     }
   );
-  socket.on("sendNoAnswer", (gameId: string) => {
-    Object.values(playerSockets).forEach((playerSocket) =>
-      playerSocket.emit("returnAnswerQuestionBlocked")
-    );
-  });
+  socket.on(
+    SEND_NO_ANSWER,
+    ({ tournamentId, gameId }: { tournamentId: string; gameId: string }) => {
+      const currentGame = tournaments[tournamentId].games[gameId];
+      sendMessageToAllPlayersFromGame(
+        currentGame,
+        RETURN_ANSWER_QUESTION_BLOCKED
+      );
+    }
+  );
+  socket.on(
+    SEND_PROCEED_TO_THE_NEXT_GAME,
+    ({
+      tournamentId,
+      winnerId,
+    }: {
+      tournamentId: string;
+      winnerId: string;
+    }) => {
+      if (!currentGameIndex) return;
+      if (!currentGameId) return;
+
+      const finishedGame = tournaments[tournamentId].games[currentGameId];
+
+      currentGameIndex++;
+      currentGameId = tournaments[tournamentId].games[currentGameIndex].gameId;
+      const winnerSocket = playersSockets[winnerId];
+      sendMsg(socket, RETURN_CURRENT_GAME_ID, {
+        currentGameId,
+        currentGameIndex,
+      });
+      sendMessageToOtherPlayersFromGame(
+        winnerId,
+        finishedGame,
+        RETURN_LOST_GAME
+      );
+      sendMsg(winnerSocket, RETURN_WON_GAME);
+    }
+  );
 
   // PARTICIPANT handlers
   socket.on(
-    "sendJoinGame",
-    ({ gameId, playerName }: { gameId: string; playerName: string }) => {
-      console.log("games", games);
+    SEND_JOIN_TOURNAMENT,
+    ({
+      tournamentId,
+      playerName,
+    }: {
+      tournamentId: string;
+      playerName: string;
+    }) => {
       if (!hostSocket) return;
 
-      if (games[gameId] && games[gameId].isOpen) {
-        games = {
-          ...games,
-          [gameId]: {
-            ...games[gameId],
-            players: [
-              ...games[gameId].players,
-              {
-                id: socket.id,
-                score: 0,
-                name: playerName,
-                isAnswering: false,
-                wasAlreadyAnswering: false,
-              },
-            ],
-          },
-        };
-        playerSockets[socket.id] = socket;
-        hostSocket.emit("returnNewPlayers", games[gameId].players);
-        socket.emit("returnJoinGame", true);
-
-        if (Object.keys(games[gameId].players).length === PLAYERS_COUNT) {
-          hostSocket.emit("returnStartGame");
-          Object.values(playerSockets).forEach((playerSocket) =>
-            playerSocket.emit("returnStartGame")
-          );
-        }
+      if (tournaments[tournamentId] && tournaments[tournamentId].isOpen) {
+        const tournamentPlayers = tournaments[tournamentId].players;
+        tournamentPlayers.push({
+          id: socket.id,
+          score: 0,
+          name: playerName,
+          isAnswering: false,
+          wasAlreadyAnswering: false,
+        });
+        playersSockets[socket.id] = socket;
+        sendMsg(hostSocket, RETURN_NEW_PLAYERS, tournamentPlayers);
+        sendMsg(socket, RETURN_JOIN_TOURNAMENT, true);
       } else {
-        socket.emit("returnJoinGame", false);
+        sendMsg(socket, RETURN_JOIN_TOURNAMENT, false);
       }
     }
   );
-  socket.on("sendAnswerQuestion", () => {
-    if (!hostSocket) return;
-    const otherPlayersSockets = Object.values(playerSockets).filter(
-      (playerSocket) => playerSocket.id !== socket.id
-    );
-    otherPlayersSockets.forEach((playerSocket) =>
-      playerSocket.emit("returnAnswerQuestionBlocked")
-    );
+  socket.on(
+    SEND_ANSWER_QUESTION,
+    ({ tournamentId, gameId }: { tournamentId: string; gameId: string }) => {
+      if (!hostSocket) {
+        console.error("NO HOST");
+        return;
+      }
+      const currentGame = tournaments[tournamentId].games[gameId];
+      if (!currentGame) {
+        console.error(SEND_ANSWER_QUESTION, "NO GAME", tournamentId, gameId);
+      }
 
-    console.log("returnAnswerQuestion");
-    hostSocket.emit("returnAnswerQuestion", socket.id);
-  });
+      sendMessageToAllPlayersFromGame(
+        currentGame,
+        RETURN_ANSWER_QUESTION_BLOCKED
+      );
+      sendMsg(hostSocket, RETURN_ANSWER_QUESTION, { playerId: socket.id });
+    }
+  );
 };
 
 io.on("connection", onConnection);

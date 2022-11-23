@@ -1,3 +1,25 @@
 # geopardy-server
 
 git push heroku to deploy
+
+1. Host creates tournament
+2. 9 players join the tournament
+3. server creates 3 games and final game - it assigns players and questions per game
+4. tournament starts - display TournamentPage - with groups
+
+// Three times
+5. Game is started - 3players have BuzzerPage, rest has WaitForYourGamePage/YouLostPage/WaitForFinalPage
+6. Single game flow -  goes on until there is a winner
+7. Game finished - updated TournamentPage is displayed
+
+8. Final game between 3 players
+9. Final view with the winner
+
+
+TODOS:
+1) Dokończyć flow stwórz turniej => gra => lobby => gra => lobby => gra => lobby => finał => lobby
+2) Dodaj logikę finalnego pytania
+3) Dodaj logikę podwójnej premii
+4) Zrób ładne lobby
+5) Zrób ładne przyciski
+6) Dodaj moliwość wrzucenia foteczki
