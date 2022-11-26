@@ -16,8 +16,7 @@ export type Tournament = {
   players: Player[];
   games: Record<string, Game>;
 
-  finalPlayers: Player[];
-  finalGame?: Game;
+  finalGame: Game;
 
   gamesCount: number;
   singleGamePlayersCount: number;

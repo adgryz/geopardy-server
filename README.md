@@ -2,6 +2,7 @@
 
 git push heroku to deploy
 
+FLOW GRY
 1. Host creates tournament
 2. 9 players join the tournament
 3. server creates 3 games and final game - it assigns players and questions per game
@@ -16,8 +17,9 @@ git push heroku to deploy
 9. Final view with the winner
 
 
+
+
 TODOS:
-1) Dokończyć flow stwórz turniej => gra => lobby => gra => lobby => gra => lobby => finał => lobby
 2) Dodaj logikę finalnego pytania
 3) Dodaj logikę podwójnej premii
 4) Zrób ładne lobby
