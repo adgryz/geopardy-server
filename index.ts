@@ -336,7 +336,10 @@ const onConnection = (socket: Socket) => {
     if (!winnerSocket) {
       console.error("NO WINNER SOCKET", winnerId);
     }
-    sendMsg(winnerSocket, RETURN_WON_GAME);
+    sendMsg(
+      winnerSocket,
+      isFinalGame ? RETURN_WON_FINAL_GAME : RETURN_WON_GAME
+    );
     sendMessageToOtherPlayersFromGame(winnerId, finishedGame, RETURN_LOST_GAME);
     sendMsg(socket, RETURN_NEW_GAMES, currentTournament.games);
   };
