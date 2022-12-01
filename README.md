@@ -17,6 +17,14 @@ FLOW GRY
 9. Final view with the winner
 
 
+FLOW FINAL QUESTION
+2nd round end 
+=> navigate to final question view / navigate to final question view
+=> show category / show betting inputs and button to confirm
+All players done bets
+=> click to show question / show input for answer
+30 s for answer
+=> show players answers
 
 
 TODOS:

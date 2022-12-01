@@ -54,6 +54,15 @@ const SEND_PLAYER_ANSWERED_WRONGLY = "sendPlayerAnsweredWrongly";
 const SEND_NO_ANSWER = "sendNoAnswer";
 const SEND_NEW_PLAYER_SCORE = "sendNewPlayerScore";
 
+//final question
+const SEND_START_FINAL_QUESTION = "sendStartFinalQuestion";
+const RETURN_ALL_BETS_SENT = "returnAllBetsSent";
+const SEND_SHOW_FINAL_QUESTION = "sendShowFinalQuestion";
+const SEND_FINAL_QUESTION_TIME_OUT = "sendFinalQuestionTimeOut";
+const RETURN_FINAL_QUESTION_ANSWERS = "returnFinalQuestionAnswers";
+const SEND_CORRECT_FINAL_ANSWER = "sendCorrectFinalAnswer";
+const SEND_INCORRECT_FINAL_ANSWER = "sendIncorrectFinalAnswer";
+
 // ---------------------------MMMM--------------------------------------
 // -------------------------O-X--X-O--------------------------------------
 // ---------------------------oooo----------------------------------------
@@ -81,6 +90,15 @@ const RETURN_NEW_PLAYER_SCORE = "returnNewPlayerScore";
 const RETURN_PLAYER_CAN_ANSWER = "returnPlayerCanAnswer";
 const RETURN_PLAYER_ANSWERED_WRONGLY = "returnPlayerAnsweredWrongly";
 const RETURN_START_QUESTION = "returnStartQuestion";
+
+//final question
+const RETURN_START_FINAL_QUESTION = "returnStartFinalQuestion";
+const SEND_BET_AMOUNT = "sendBetAmount";
+const RETURN_FINAL_QUESTION = "returnFinalQuestion";
+const SEND_FINAL_QUESTION_ANSWER = "sendFinalQuestionAnswer";
+const RETURN_RUN_OUT_OF_TIME = "returnRunOutOfTime";
+const RETURN_IS_FINAL_QUESTION_ANSWER_CORRECT =
+  "returnIsFinalQuestionAnswerCorrect";
 
 // COMMON
 const RETURN_START_TOURNAMENT = "returnStartTournament";
@@ -114,6 +132,7 @@ const createGames = (players: Player[]): Record<string, Game> => {
           index * SINGLE_GAME_PLAYERS_COUNT,
           (index + 1) * SINGLE_GAME_PLAYERS_COUNT
         ),
+        finalQuestionInfos: {},
       },
     ])
   );
@@ -181,6 +200,7 @@ const onConnection = (socket: Socket) => {
         gameId: "finalGame",
         isStarted: false,
         players: [],
+        finalQuestionInfos: {},
       },
 
       gamesCount: GAMES_CONT,
@@ -268,16 +288,20 @@ const onConnection = (socket: Socket) => {
       const isLastGameFinished = currentGameIndex === GAMES_CONT - 1;
       if (isLastGameFinished) {
         handleFinalGameStart(currentTournament);
-        isFinalGame = true;
       } else {
         handleNextQualifyGameStart(currentTournament);
       }
 
+      console.log("inform");
       informParticipantAboutGameResults(
         winnerId,
         currentTournament,
         finishedGame
       );
+
+      if (isLastGameFinished) {
+        isFinalGame = true;
+      }
     }
   );
   const addWinnerToFinal = (
@@ -305,9 +329,9 @@ const onConnection = (socket: Socket) => {
     sendMsg(socket, RETURN_NEXT_GAME_IS_FINAL);
     currentTournament.finalGame.players.forEach((finalPlayer) => {
       console.log(
+        "handleFinalGameStart",
         RETURN_START_FINAL_GAME,
-        finalPlayer.id,
-        currentTournament.finalGame.gameId
+        finalPlayer.id
       );
       playersSockets[finalPlayer.id].emit(RETURN_START_FINAL_GAME, {
         gameId: currentTournament.finalGame.gameId,
@@ -333,6 +357,7 @@ const onConnection = (socket: Socket) => {
   ) => {
     const winnerSocket = playersSockets[winnerId];
 
+    console.log("informParticipantAboutGameResults", winnerId, isFinalGame);
     if (!winnerSocket) {
       console.error("NO WINNER SOCKET", winnerId);
     }
@@ -423,6 +448,96 @@ const onConnection = (socket: Socket) => {
     }
   );
 
+  // FINAL QUESTION
+  //---------------------------------------------
+  // SEND_START_FINAL_QUESTION
+  socket.on(
+    SEND_START_FINAL_QUESTION,
+    ({ gameId, tournamentId }: { tournamentId: string; gameId: string }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      currentGame.isFinalQuestionStarted = true;
+      sendMessageToAllPlayersFromGame(currentGame, RETURN_START_FINAL_QUESTION);
+    }
+  );
+  // SEND_SHOW_FINAL_QUESTION
+  socket.on(
+    SEND_SHOW_FINAL_QUESTION,
+    ({ gameId, tournamentId }: { tournamentId: string; gameId: string }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      sendMessageToAllPlayersFromGame(currentGame, RETURN_FINAL_QUESTION);
+    }
+  );
+  // SEND_FINAL_QUESTION_TIME_OUT
+  socket.on(
+    SEND_FINAL_QUESTION_TIME_OUT,
+    ({ gameId, tournamentId }: { tournamentId: string; gameId: string }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      currentGame.isFinalQuestionStarted = false;
+      sendMessageToAllPlayersFromGame(currentGame, RETURN_RUN_OUT_OF_TIME);
+      sendMsg(socket, RETURN_FINAL_QUESTION_ANSWERS, {
+        finalQuestionInfos: currentGame.finalQuestionInfos,
+      });
+    }
+  );
+  // SEND_CORRECT_FINAL_ANSWER
+  socket.on(
+    SEND_CORRECT_FINAL_ANSWER,
+    ({
+      gameId,
+      tournamentId,
+      playerId,
+    }: {
+      tournamentId: string;
+      gameId: string;
+      playerId: string;
+    }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      const playerBet = currentGame.finalQuestionInfos[playerId].betAmount;
+      currentGame.players = currentGame.players.map((player) =>
+        player.id === playerId
+          ? { ...player, score: player.score + playerBet }
+          : player
+      );
+      const newScore =
+        currentGame.players.find((player) => player.id === playerId)?.score ||
+        0;
+      sendMsg(
+        playersSockets[playerId],
+        RETURN_IS_FINAL_QUESTION_ANSWER_CORRECT,
+        { isCorrect: true, newScore }
+      );
+    }
+  );
+  // SEND_INCORRECT_FINAL_ANSWER
+  socket.on(
+    SEND_INCORRECT_FINAL_ANSWER,
+    ({
+      gameId,
+      tournamentId,
+      playerId,
+    }: {
+      tournamentId: string;
+      gameId: string;
+      playerId: string;
+    }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      const playerBet = currentGame.finalQuestionInfos[playerId].betAmount;
+      currentGame.players = currentGame.players.map((player) =>
+        player.id === playerId
+          ? { ...player, score: player.score - playerBet }
+          : player
+      );
+      const newScore =
+        currentGame.players.find((player) => player.id === playerId)?.score ||
+        0;
+      sendMsg(
+        playersSockets[playerId],
+        RETURN_IS_FINAL_QUESTION_ANSWER_CORRECT,
+        { isCorrect: false, newScore }
+      );
+    }
+  );
+
   // *****************************************************************
   // PARTICIPANT handlers
   // *****************************************************************
@@ -479,6 +594,53 @@ const onConnection = (socket: Socket) => {
         RETURN_ANSWER_QUESTION_BLOCKED
       );
       sendMsg(hostSocket, RETURN_ANSWER_QUESTION, { playerId: socket.id });
+    }
+  );
+
+  // FINAL QUESTION
+  //---------------------------------------------
+  // SEND_BET_AMOUNT
+  socket.on(
+    SEND_BET_AMOUNT,
+    ({
+      tournamentId,
+      gameId,
+      betAmount,
+    }: {
+      tournamentId: string;
+      gameId: string;
+      betAmount: number;
+    }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      currentGame.finalQuestionInfos[socket.id] = {
+        playerId: socket.id,
+        betAmount: betAmount,
+        answer: "",
+      };
+
+      const allPlayersSubmittedTheirBets =
+        Object.values(currentGame.finalQuestionInfos).length ===
+        SINGLE_GAME_PLAYERS_COUNT;
+      console.log();
+      if (allPlayersSubmittedTheirBets && hostSocket) {
+        sendMsg(hostSocket, RETURN_ALL_BETS_SENT);
+      }
+    }
+  );
+  // SEND_FINAL_QUESTION_ANSWER
+  socket.on(
+    SEND_FINAL_QUESTION_ANSWER,
+    ({
+      tournamentId,
+      gameId,
+      answer,
+    }: {
+      tournamentId: string;
+      gameId: string;
+      answer: string;
+    }) => {
+      const currentGame = getCurrentGame({ tournamentId, gameId });
+      currentGame.finalQuestionInfos[socket.id].answer = answer;
     }
   );
 };

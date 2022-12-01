@@ -6,10 +6,18 @@ export type Player = {
   wasAlreadyAnswering?: boolean;
 };
 
+export type FinalQuestionInfo = {
+  answer: string;
+  betAmount: number;
+  playerId: string;
+};
+
 export type Game = {
   gameId: string;
   isStarted: boolean;
   players: Player[];
+  finalQuestionInfos: Record<string, FinalQuestionInfo>;
+  isFinalQuestionStarted?: boolean;
 };
 
 export type Tournament = {
