@@ -9,7 +9,7 @@ import { ISendPlayerAnsweredWronglyPayload } from "./messagesTypes";
 
 dotenv.config();
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3123;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -103,8 +103,8 @@ const RETURN_IS_FINAL_QUESTION_ANSWER_CORRECT =
 // COMMON
 const RETURN_START_TOURNAMENT = "returnStartTournament";
 
-const PLAYERS_COUNT = 9;
-const SINGLE_GAME_PLAYERS_COUNT = 3;
+const PLAYERS_COUNT = 4;
+const SINGLE_GAME_PLAYERS_COUNT = 2;
 const GAMES_CONT = Math.floor(PLAYERS_COUNT / SINGLE_GAME_PLAYERS_COUNT);
 
 let tournaments: Record<string, Tournament> = {};
@@ -317,6 +317,7 @@ const onConnection = (socket: Socket) => {
     }
     currentTournament.finalGame.players.push({
       name: winner.name,
+      base64Photo: winner.base64Photo,
       score: 0,
       isAnswering: false,
       id: winnerId,
@@ -326,7 +327,9 @@ const onConnection = (socket: Socket) => {
     });
   };
   const handleFinalGameStart = (currentTournament: Tournament) => {
-    sendMsg(socket, RETURN_NEXT_GAME_IS_FINAL);
+    sendMsg(socket, RETURN_NEXT_GAME_IS_FINAL, {
+      finalGame: currentTournament.finalGame,
+    });
     currentTournament.finalGame.players.forEach((finalPlayer) => {
       console.log(
         "handleFinalGameStart",
