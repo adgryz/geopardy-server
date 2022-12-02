@@ -4,6 +4,7 @@ export type Player = {
   score: number;
   isAnswering: boolean;
   wasAlreadyAnswering?: boolean;
+  base64Photo?: string;
 };
 
 export type FinalQuestionInfo = {
