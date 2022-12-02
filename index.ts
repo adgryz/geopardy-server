@@ -9,7 +9,7 @@ import { ISendPlayerAnsweredWronglyPayload } from "./messagesTypes";
 
 dotenv.config();
 const app = express();
-const port = 3123;
+const port = 3000;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
