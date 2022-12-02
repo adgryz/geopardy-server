@@ -649,5 +649,6 @@ const onConnection = (socket: Socket) => {
 };
 
 io.on("connection", onConnection);
+console.log("IM ALIVE");
 console.log("Listening on port: ", port);
 httpServer.listen(port);
