@@ -103,8 +103,8 @@ const RETURN_IS_FINAL_QUESTION_ANSWER_CORRECT =
 // COMMON
 const RETURN_START_TOURNAMENT = "returnStartTournament";
 
-const PLAYERS_COUNT = 4;
-const SINGLE_GAME_PLAYERS_COUNT = 2;
+const PLAYERS_COUNT = 9;
+const SINGLE_GAME_PLAYERS_COUNT = 3;
 const GAMES_CONT = Math.floor(PLAYERS_COUNT / SINGLE_GAME_PLAYERS_COUNT);
 
 let tournaments: Record<string, Tournament> = {};
