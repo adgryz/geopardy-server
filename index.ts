@@ -73,6 +73,7 @@ const SEND_INCORRECT_FINAL_ANSWER = "sendIncorrectFinalAnswer";
 //tournament
 const SEND_JOIN_TOURNAMENT = "sendJoinTournament";
 const RETURN_JOIN_TOURNAMENT = "returnJoinTournament";
+const RECONNECT_PARTICIPANT = "reconnectParticipant";
 
 //games
 const RETURN_START_GAME = "returnStartGame";
@@ -545,6 +546,9 @@ const onConnection = (socket: Socket) => {
   // PARTICIPANT handlers
   // *****************************************************************
 
+  socket.on(RECONNECT_PARTICIPANT, (playerId: string) => {
+    playersSockets[playerId] = socket;
+  });
   // TOURNAMENT
   //---------------------------------------------
   // SEND_JOIN_TOURNAMENT,
@@ -554,10 +558,12 @@ const onConnection = (socket: Socket) => {
       tournamentId,
       playerName,
       base64Photo,
+      playerId,
     }: {
       tournamentId: string;
       playerName: string;
       base64Photo: string;
+      playerId: string;
     }) => {
       if (!hostSocket) return;
 
@@ -571,7 +577,7 @@ const onConnection = (socket: Socket) => {
           wasAlreadyAnswering: false,
           base64Photo,
         });
-        playersSockets[socket.id] = socket;
+        playersSockets[playerId] = socket;
         sendMsg(hostSocket, RETURN_NEW_PLAYERS, tournamentPlayers);
         sendMsg(socket, RETURN_JOIN_TOURNAMENT, true);
       } else {
@@ -585,7 +591,15 @@ const onConnection = (socket: Socket) => {
   // SEND_ANSWER_QUESTION,
   socket.on(
     SEND_ANSWER_QUESTION,
-    ({ tournamentId, gameId }: { tournamentId: string; gameId: string }) => {
+    ({
+      tournamentId,
+      gameId,
+      playerId,
+    }: {
+      tournamentId: string;
+      gameId: string;
+      playerId: string;
+    }) => {
       if (!hostSocket) {
         console.error("NO HOST");
         return;
@@ -599,7 +613,7 @@ const onConnection = (socket: Socket) => {
         currentGame,
         RETURN_ANSWER_QUESTION_BLOCKED
       );
-      sendMsg(hostSocket, RETURN_ANSWER_QUESTION, { playerId: socket.id });
+      sendMsg(hostSocket, RETURN_ANSWER_QUESTION, { playerId });
     }
   );
 
@@ -612,14 +626,16 @@ const onConnection = (socket: Socket) => {
       tournamentId,
       gameId,
       betAmount,
+      playerId,
     }: {
       tournamentId: string;
       gameId: string;
       betAmount: number;
+      playerId: string;
     }) => {
       const currentGame = getCurrentGame({ tournamentId, gameId });
-      currentGame.finalQuestionInfos[socket.id] = {
-        playerId: socket.id,
+      currentGame.finalQuestionInfos[playerId] = {
+        playerId,
         betAmount: betAmount,
         answer: "",
       };
@@ -627,7 +643,6 @@ const onConnection = (socket: Socket) => {
       const allPlayersSubmittedTheirBets =
         Object.values(currentGame.finalQuestionInfos).length ===
         SINGLE_GAME_PLAYERS_COUNT;
-      console.log();
       if (allPlayersSubmittedTheirBets && hostSocket) {
         sendMsg(hostSocket, RETURN_ALL_BETS_SENT);
       }
@@ -640,13 +655,15 @@ const onConnection = (socket: Socket) => {
       tournamentId,
       gameId,
       answer,
+      playerId,
     }: {
       tournamentId: string;
       gameId: string;
       answer: string;
+      playerId: string;
     }) => {
       const currentGame = getCurrentGame({ tournamentId, gameId });
-      currentGame.finalQuestionInfos[socket.id].answer = answer;
+      currentGame.finalQuestionInfos[playerId].answer = answer;
     }
   );
 };
