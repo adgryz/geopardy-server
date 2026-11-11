@@ -1,0 +1,14 @@
+# Render Blueprint – darmowy Web Service z serwerem gry (socket.io).
+# Render: New + -> Blueprint -> wybierz repo geopardy-server.
+services:
+  - type: web
+    name: geopardy-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: master
+    # --include=dev, bo TypeScript jest w devDependencies, a jest potrzebny do builda
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
