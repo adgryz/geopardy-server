@@ -64,6 +64,8 @@ const SEND_START_TOURNAMENT = "sendStartTournament";
 const SEND_SET_GAME_SIZES = "sendSetGameSizes";
 const RETURN_GAME_SIZES = "returnGameSizes";
 const SEND_REMOVE_PLAYER = "sendRemovePlayer";
+// Host wipes everything – the app goes back to a clean start
+const SEND_RESET_TOURNAMENT = "sendResetTournament";
 
 //games
 const SEND_START_GAME = "sendStartGame";
@@ -628,6 +630,42 @@ const onConnection = (socket: Socket) => {
     io.to(playerRoom(playerId)).emit(RETURN_PLAYER_STATE, null);
     emitToHost(tournament, RETURN_NEW_PLAYERS, tournament.players);
     emitConnectedPlayers(tournament);
+  });
+
+  // Clean start: every tournament is deleted, players go back to the join
+  // screen and every host goes back to the "create tournament" screen.
+  handle(socket, SEND_RESET_TOURNAMENT, () => {
+    Object.values(tournaments).forEach((tournament) => {
+      tournament.players.forEach((player) => {
+        const room = playerRoom(player.id);
+        io.to(room).emit(RETURN_PLAYER_STATE, null);
+        io.in(room).fetchSockets().then((playerSockets) =>
+          playerSockets.forEach((playerSocket) => {
+            playerSocket.data.playerId = undefined;
+            playerSocket.data.tournamentId = undefined;
+          })
+        );
+        io.in(room).socketsLeave(room);
+      });
+
+      const room = hostRoom(tournament.id);
+      io.to(room).emit(RETURN_HOST_STATE, {
+        state: null,
+        activeTournamentId: null,
+      });
+      io.in(room).fetchSockets().then((hostSockets) =>
+        hostSockets.forEach((hostSocket) => {
+          hostSocket.data.hostTournamentId = undefined;
+        })
+      );
+      io.in(room).socketsLeave(room);
+
+      delete tournaments[tournament.id];
+    });
+    log("RESET – all tournaments removed");
+
+    // Also answers a host that was not bound to any tournament
+    socket.emit(RETURN_HOST_STATE, { state: null, activeTournamentId: null });
   });
 
   // GAMES
