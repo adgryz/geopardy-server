@@ -58,7 +58,8 @@ export type Tournament = {
 
   playersCount: number;
   gamesCount: number;
-  singleGamePlayersCount: number;
+  // number of players in each qualifying game, e.g. [5, 5, 6]
+  gameSizes: number[];
   isOpen: boolean;
   isStarted: boolean;
   isFinished: boolean;
@@ -111,6 +112,7 @@ export type ParticipantState = {
 export type HostState = {
   tournamentId: string;
   playersCount: number;
+  gameSizes: number[];
   players: Player[];
   games: Record<string, Game>;
   finalGame: Game;

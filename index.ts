@@ -60,6 +60,9 @@ const RETURN_CURRENT_GAME_ID = "returnCurrentGameId";
 const RETURN_NEW_PLAYERS = "returnNewPlayers";
 const RETURN_CONNECTED_PLAYERS = "returnConnectedPlayers";
 const SEND_START_TOURNAMENT = "sendStartTournament";
+// Host changes how many players play in each qualifying game
+const SEND_SET_GAME_SIZES = "sendSetGameSizes";
+const RETURN_GAME_SIZES = "returnGameSizes";
 const SEND_REMOVE_PLAYER = "sendRemovePlayer";
 
 //games
@@ -76,6 +79,7 @@ const SEND_START_QUESTION = "sendStartQuestion";
 const RETURN_ANSWER_QUESTION = "returnAnswerQuestion";
 const SEND_ANSWER_JUDGED = "sendAnswerJudged";
 const SEND_NO_ANSWER = "sendNoAnswer";
+const SEND_CANCEL_QUESTION = "sendCancelQuestion";
 const RETURN_SCORES = "returnScores";
 
 //final question
@@ -114,11 +118,21 @@ const RETURN_START_GAME = "returnStartGame";
 
 const DEFAULT_TOURNAMENT_ID = "Test";
 const PLAYERS_COUNT = Number(process.env.PLAYERS_COUNT) || 3;
-const SINGLE_GAME_PLAYERS_COUNT = 3;
+// Default size of a qualifying game – the host can change the size of every
+// game in the lobby (e.g. 5 | 5 | 6).
+const DEFAULT_GAME_PLAYERS_COUNT = 3;
+const MIN_GAME_PLAYERS_COUNT = 1;
+const MAX_GAME_PLAYERS_COUNT = 12;
 const GAMES_COUNT = Math.max(
   1,
-  Math.floor(PLAYERS_COUNT / SINGLE_GAME_PLAYERS_COUNT)
+  Math.floor(PLAYERS_COUNT / DEFAULT_GAME_PLAYERS_COUNT)
 );
+const DEFAULT_GAME_SIZES: number[] = new Array(GAMES_COUNT).fill(
+  DEFAULT_GAME_PLAYERS_COUNT
+);
+
+const sum = (values: number[]) =>
+  values.reduce((total, value) => total + value, 0);
 // Answers to the final question that arrive just after the time is up
 // (network lag) are still accepted.
 const FINAL_ANSWER_GRACE_MS = 3000;
@@ -175,9 +189,9 @@ const createTournament = (tournamentId: string): Tournament => ({
   players: [],
   games: {},
   finalGame: createEmptyGame("finalGame", []),
-  playersCount: PLAYERS_COUNT,
+  playersCount: sum(DEFAULT_GAME_SIZES),
   gamesCount: GAMES_COUNT,
-  singleGamePlayersCount: SINGLE_GAME_PLAYERS_COUNT,
+  gameSizes: [...DEFAULT_GAME_SIZES],
   isOpen: true,
   isStarted: false,
   isFinished: false,
@@ -188,24 +202,18 @@ const createTournament = (tournamentId: string): Tournament => ({
 
 const createGames = (
   players: Player[],
-  gamesCount: number
+  gameSizes: number[]
 ): Record<string, Game> => {
   const shuffledPlayers = shuffleArray(players);
+  let firstPlayerIndex = 0;
   return Object.fromEntries(
-    new Array(gamesCount).fill(0).map((_, index) => {
+    gameSizes.map((gameSize, index) => {
       const gameId = `game${index + 1}`;
-      return [
-        gameId,
-        createEmptyGame(
-          gameId,
-          shuffledPlayers
-            .slice(
-              index * SINGLE_GAME_PLAYERS_COUNT,
-              (index + 1) * SINGLE_GAME_PLAYERS_COUNT
-            )
-            .map(toGamePlayer)
-        ),
-      ];
+      const gamePlayers = shuffledPlayers
+        .slice(firstPlayerIndex, firstPlayerIndex + gameSize)
+        .map(toGamePlayer);
+      firstPlayerIndex += gameSize;
+      return [gameId, createEmptyGame(gameId, gamePlayers)];
     })
   );
 };
@@ -323,6 +331,7 @@ const getHostState = (tournament: Tournament): HostState => {
   return {
     tournamentId: tournament.id,
     playersCount: tournament.playersCount,
+    gameSizes: tournament.gameSizes,
     players: tournament.players,
     games: tournament.games,
     finalGame: tournament.finalGame,
@@ -523,6 +532,7 @@ const onConnection = (socket: Socket) => {
     emitToHost(tournament, RETURN_NEW_TOURNAMENT, {
       tournamentId,
       playersCount: tournament.playersCount,
+      gameSizes: tournament.gameSizes,
     });
     emitToHost(tournament, RETURN_NEW_PLAYERS, tournament.players);
   });
@@ -553,11 +563,15 @@ const onConnection = (socket: Socket) => {
       emitToHost(tournament, RETURN_START_TOURNAMENT);
       return;
     }
+    if (tournament.players.length !== tournament.playersCount) {
+      log("Cannot start – wrong number of players", tournament.players.length);
+      return;
+    }
 
     log("Starting tournament", tournament.id);
     tournament.isStarted = true;
     tournament.isOpen = false;
-    tournament.games = createGames(tournament.players, tournament.gamesCount);
+    tournament.games = createGames(tournament.players, tournament.gameSizes);
     tournament.currentGameIndex = 0;
     tournament.currentGameId = Object.keys(tournament.games)[0] ?? null;
 
@@ -570,6 +584,37 @@ const onConnection = (socket: Socket) => {
     });
     emitToHost(tournament, RETURN_START_TOURNAMENT);
     syncPlayers(tournament);
+  });
+
+  handle(socket, SEND_SET_GAME_SIZES, ({ tournamentId, gameSizes }) => {
+    const tournament = getHostTournament(tournamentId);
+    if (!tournament) return;
+
+    const isValid =
+      !tournament.isStarted &&
+      Array.isArray(gameSizes) &&
+      gameSizes.length === tournament.gamesCount &&
+      gameSizes.every(
+        (gameSize) =>
+          Number.isInteger(gameSize) &&
+          gameSize >= MIN_GAME_PLAYERS_COUNT &&
+          gameSize <= MAX_GAME_PLAYERS_COUNT
+      ) &&
+      // players who already joined must still fit
+      sum(gameSizes) >= tournament.players.length;
+
+    if (isValid) {
+      tournament.gameSizes = [...gameSizes];
+      tournament.playersCount = sum(gameSizes);
+      log("Game sizes changed", tournament.gameSizes.join(" | "));
+    } else {
+      log("Rejected game sizes", gameSizes);
+    }
+    // Always answer, so that the host shows what the server really has
+    emitToHost(tournament, RETURN_GAME_SIZES, {
+      playersCount: tournament.playersCount,
+      gameSizes: tournament.gameSizes,
+    });
   });
 
   handle(socket, SEND_REMOVE_PLAYER, ({ tournamentId, playerId }) => {
@@ -764,7 +809,7 @@ const onConnection = (socket: Socket) => {
     }
   );
 
-  // Host left the question (back button)
+  // Host closed the question – nobody answered it ("no answer" button)
   handle(socket, SEND_NO_ANSWER, ({ tournamentId }) => {
     const tournament = getHostTournament(tournamentId);
     if (!tournament) return;
@@ -772,6 +817,25 @@ const onConnection = (socket: Socket) => {
     if (!game) return;
 
     game.question = null;
+    syncPlayers(tournament, game.players);
+  });
+
+  // Host went back to the board (e.g. a misclick) – the question stays
+  // available on the board
+  handle(socket, SEND_CANCEL_QUESTION, ({ tournamentId }) => {
+    const tournament = getHostTournament(tournamentId);
+    if (!tournament) return;
+    const game = getActiveGame(tournament);
+    if (!game) return;
+
+    const questionId = game.question?.id;
+    if (questionId) {
+      game.answeredQuestionIds = game.answeredQuestionIds.filter(
+        (answeredQuestionId) => answeredQuestionId !== questionId
+      );
+    }
+    game.question = null;
+    game.questionSeq += 1;
     syncPlayers(tournament, game.players);
   });
 
@@ -1093,5 +1157,10 @@ httpServer.on("error", (error) => {
 });
 
 console.log("IM ALIVE");
-console.log("Listening on port: ", port, "players count:", PLAYERS_COUNT);
+console.log(
+  "Listening on port: ",
+  port,
+  "default game sizes:",
+  DEFAULT_GAME_SIZES.join(" | ")
+);
 httpServer.listen(port);
