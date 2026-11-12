@@ -60,6 +60,8 @@ export type Tournament = {
   gamesCount: number;
   // number of players in each qualifying game, e.g. [5, 5, 6]
   gameSizes: number[];
+  // lite version – only the first round and the final question are played
+  isLite: boolean;
   isOpen: boolean;
   isStarted: boolean;
   isFinished: boolean;
@@ -113,6 +115,7 @@ export type HostState = {
   tournamentId: string;
   playersCount: number;
   gameSizes: number[];
+  isLite: boolean;
   players: Player[];
   games: Record<string, Game>;
   finalGame: Game;

@@ -189,8 +189,12 @@ const toGamePlayer = (player: Player): Player => ({
   wasAlreadyAnswering: false,
 });
 
-const createTournament = (tournamentId: string): Tournament => ({
+const createTournament = (
+  tournamentId: string,
+  isLite: boolean
+): Tournament => ({
   id: tournamentId,
+  isLite,
   players: [],
   games: {},
   finalGame: createEmptyGame("finalGame", []),
@@ -337,6 +341,7 @@ const getHostState = (tournament: Tournament): HostState => {
     tournamentId: tournament.id,
     playersCount: tournament.playersCount,
     gameSizes: tournament.gameSizes,
+    isLite: tournament.isLite,
     players: tournament.players,
     games: tournament.games,
     finalGame: tournament.finalGame,
@@ -521,12 +526,12 @@ const onConnection = (socket: Socket) => {
 
   // TOURNAMENT
   //---------------------------------------------
-  handle(socket, SEND_CREATE_TOURNAMENT, () => {
+  handle(socket, SEND_CREATE_TOURNAMENT, ({ isLite }) => {
     const tournamentId = DEFAULT_TOURNAMENT_ID;
     const previousTournament = tournaments[tournamentId];
-    const tournament = createTournament(tournamentId);
+    const tournament = createTournament(tournamentId, isLite === true);
     tournaments[tournamentId] = tournament;
-    log("Tournament created", tournamentId);
+    log("Tournament created", tournamentId, tournament.isLite ? "(lite)" : "");
 
     // Players of the replaced tournament go back to the join screen
     previousTournament?.players.forEach((player) =>
@@ -538,6 +543,7 @@ const onConnection = (socket: Socket) => {
       tournamentId,
       playersCount: tournament.playersCount,
       gameSizes: tournament.gameSizes,
+      isLite: tournament.isLite,
     });
     emitToHost(tournament, RETURN_NEW_PLAYERS, tournament.players);
   });
