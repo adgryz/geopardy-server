@@ -119,15 +119,18 @@ const RETURN_START_TOURNAMENT = "returnStartTournament";
 const RETURN_START_GAME = "returnStartGame";
 
 const DEFAULT_TOURNAMENT_ID = "Test";
-const PLAYERS_COUNT = Number(process.env.PLAYERS_COUNT) || 3;
 // Default size of a qualifying game – the host can change the size of every
 // game in the lobby (e.g. 5 | 5 | 6).
 const DEFAULT_GAME_PLAYERS_COUNT = 3;
 const MIN_GAME_PLAYERS_COUNT = 1;
 const MAX_GAME_PLAYERS_COUNT = 12;
-const GAMES_COUNT = Math.max(
-  1,
-  Math.floor(PLAYERS_COUNT / DEFAULT_GAME_PLAYERS_COUNT)
+// The host has question sets for 3 qualifying games (+ the final), the host
+// can add / remove qualifying games in the lobby.
+const MIN_GAMES_COUNT = 1;
+const MAX_GAMES_COUNT = 3;
+const GAMES_COUNT = Math.min(
+  MAX_GAMES_COUNT,
+  Math.max(MIN_GAMES_COUNT, Number(process.env.GAMES_COUNT) || MAX_GAMES_COUNT)
 );
 const DEFAULT_GAME_SIZES: number[] = new Array(GAMES_COUNT).fill(
   DEFAULT_GAME_PLAYERS_COUNT
@@ -595,7 +598,8 @@ const onConnection = (socket: Socket) => {
     const isValid =
       !tournament.isStarted &&
       Array.isArray(gameSizes) &&
-      gameSizes.length === tournament.gamesCount &&
+      gameSizes.length >= MIN_GAMES_COUNT &&
+      gameSizes.length <= MAX_GAMES_COUNT &&
       gameSizes.every(
         (gameSize) =>
           Number.isInteger(gameSize) &&
@@ -607,6 +611,7 @@ const onConnection = (socket: Socket) => {
 
     if (isValid) {
       tournament.gameSizes = [...gameSizes];
+      tournament.gamesCount = gameSizes.length;
       tournament.playersCount = sum(gameSizes);
       log("Game sizes changed", tournament.gameSizes.join(" | "));
     } else {
